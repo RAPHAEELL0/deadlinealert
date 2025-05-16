@@ -23,6 +23,9 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Cursor related
+.cursor/
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
@@ -32,6 +35,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+
+# Environment variables
+.env
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +49,34 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# Temporary files
+*.tmp
+*.bak
+temp/
+
+# Coverage information
+coverage/
+
+# Local configuration files
+**/firebase_options_dev.dart
+**/google-services-dev.json
+**/GoogleService-Info-Dev.plist
+
+# macOS
+**/macos/Flutter/ephemeral
+
+# Windows
+**/windows/flutter/ephemeral
+
+# Linux
+**/linux/flutter/ephemeral
+
+# Secret keys and credentials
+**/*.keystore
+**/*.jks
+**/key.properties

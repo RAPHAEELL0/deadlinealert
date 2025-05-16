@@ -1,16 +1,160 @@
-# deadlinealert
+# DeadlineAlert
 
-A new Flutter project.
+A comprehensive deadline tracking application built with Flutter and Supabase backend. This app helps users manage their deadlines with categories, priorities, notifications, and intuitive task management features.
+
+## Features
+
+- **Task Management**
+  - Create, edit, and delete deadlines with customizable details
+  - Set priority levels (low, medium, high) with visual indicators
+  - Organize tasks with user-defined categories
+  - Mark tasks as complete with a simple checkbox
+  - View deadlines by today, upcoming, and overdue status
+  - Bulk reschedule overdue tasks to a future date
+
+- **User Experience**
+  - Clean, intuitive UI with smooth transitions
+  - Light and dark theme support
+  - Swipe actions for quick task actions
+  - Detailed task views with all relevant information
+
+- **Authentication**
+  - Secure email and password authentication via Supabase
+  - Protected routes requiring authentication
+  - User-friendly error messages
+
+- **Technical Features**
+  - Real-time data synchronization with Supabase
+  - Push notifications for upcoming deadlines
+  - Environment variable configuration for security
+  - Responsive design for various device sizes
+
+## Project Structure
+
+```
+lib/
+├── constants/       # App constants and configuration
+├── models/          # Data models (Deadline, Category)
+├── providers/       # State management with Riverpod
+├── screens/         # UI screens
+│   ├── auth/        # Authentication screens
+│   ├── deadline/    # Deadline management screens
+│   ├── category/    # Category management screens
+├── services/        # Backend services
+├── utils/           # Utility functions
+├── widgets/         # Reusable UI components
+└── main.dart        # App entry point
+```
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK (2.10.0 or higher)
+- Dart SDK (2.16.0 or higher)
+- A Supabase account and project
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Setting Up Supabase
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Create a new project in [Supabase](https://supabase.com/)
+2. Set up the following tables in your Supabase database:
+   - `deadlines` - For storing user deadlines
+   - `categories` - For storing user categories
+3. Get your project URL and anon key from the API settings page
+
+### Environment Setup
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/RAPHAEELL0/deadlinealert.git
+   cd deadlinealert
+   ```
+
+2. Create a `.env` file in the root directory with your Supabase credentials:
+   ```
+   SUPABASE_URL=https://your-project-id.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key
+   ```
+   
+   > ⚠️ **SECURITY WARNING**: Never commit your `.env` file to version control. This file contains sensitive API keys.
+
+3. Install dependencies
+   ```bash
+   flutter pub get
+   ```
+
+### Running the App
+
+```bash
+# Debug mode
+flutter run
+
+# Release mode
+flutter run --release
+```
+
+## Database Schema
+
+### Deadlines Table
+- `id` (UUID, PK)
+- `title` (String)
+- `description` (String)
+- `due_date` (Timestamp)
+- `is_completed` (Boolean)
+- `priority` (String enum: 'low', 'medium', 'high')
+- `category_id` (UUID, FK)
+- `user_id` (UUID, FK)
+- `device_id` (String)
+- `created_at` (Timestamp)
+- `updated_at` (Timestamp)
+
+### Categories Table
+- `id` (UUID, PK)
+- `name` (String)
+- `color` (String)
+- `user_id` (UUID, FK)
+- `device_id` (String)
+- `created_at` (Timestamp)
+
+## Security Considerations
+
+- This app uses environment variables to securely store API keys
+- Authentication is handled by Supabase's secure auth system
+- Device IDs are used to store local data before authentication
+- Data is migrated from device-based to user-based upon login
+
+## Deployment
+
+### Android
+```bash
+flutter build apk --release
+```
+
+### iOS
+```bash
+flutter build ios --release
+```
+
+### Web
+```bash
+flutter build web --release
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+[Add license information here]
+
+## Acknowledgements
+
+- [Flutter](https://flutter.dev/)
+- [Riverpod](https://riverpod.dev/)
+- [Supabase](https://supabase.com/)
+- [GoRouter](https://pub.dev/packages/go_router)
