@@ -350,31 +350,14 @@ class _DeadlineFormScreenState extends ConsumerState<DeadlineFormScreen> {
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    SegmentedButton<Priority>(
-                      segments: const [
-                        ButtonSegment(
-                          value: Priority.low,
-                          label: Text('Low'),
-                          icon: Icon(Icons.arrow_downward),
-                        ),
-                        ButtonSegment(
-                          value: Priority.medium,
-                          label: Text('Medium'),
-                          icon: Icon(Icons.remove),
-                        ),
-                        ButtonSegment(
-                          value: Priority.high,
-                          label: Text('High'),
-                          icon: Icon(Icons.arrow_upward),
-                        ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildPriorityOption(Priority.low),
+                        _buildPriorityOption(Priority.medium),
+                        _buildPriorityOption(Priority.high),
                       ],
-                      selected: {_selectedPriority},
-                      onSelectionChanged: (Set<Priority> newSelection) {
-                        setState(() {
-                          _selectedPriority = newSelection.first;
-                        });
-                      },
                     ),
                     const SizedBox(height: 24),
 
@@ -416,6 +399,69 @@ class _DeadlineFormScreenState extends ConsumerState<DeadlineFormScreen> {
                   ],
                 ),
               ),
+    );
+  }
+
+  Widget _buildPriorityOption(Priority priority) {
+    // Define priority colors
+    final priorityColors = {
+      Priority.low: Colors.green,
+      Priority.medium: Colors.orange,
+      Priority.high: Colors.red.shade500,
+    };
+
+    // Define priority labels
+    final priorityLabels = {
+      Priority.low: 'Low',
+      Priority.medium: 'Medium',
+      Priority.high: 'High',
+    };
+
+    // Define priority icons
+    final priorityIcons = {
+      Priority.low: Icons.arrow_downward,
+      Priority.medium: Icons.remove,
+      Priority.high: Icons.arrow_upward,
+    };
+
+    final isSelected = _selectedPriority == priority;
+    final color = priorityColors[priority]!;
+    final label = priorityLabels[priority]!;
+    final icon = priorityIcons[priority]!;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedPriority = priority;
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: isSelected ? color : Colors.grey, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : Colors.grey,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

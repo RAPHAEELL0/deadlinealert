@@ -56,6 +56,12 @@ dependencies:
   google_fonts: ^6.1.0
   intl: ^0.18.0
   
+  # Microinteractions & animations
+  just_audio: ^0.9.36
+  custom_refresh_indicator: ^3.0.0
+  lottie: ^3.0.0
+  flutter_animate: ^4.5.0
+  
   # Storage
   shared_preferences: ^2.2.0
   path_provider: ^2.1.0
@@ -86,6 +92,8 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
+    - assets/sounds/
+    - assets/animations/
     - .env
   #   - images/a_dot_burr.jpeg
 

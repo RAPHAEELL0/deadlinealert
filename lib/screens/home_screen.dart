@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:deadlinealert/models/deadline.dart';
 import 'package:deadlinealert/models/category.dart';
@@ -10,6 +11,10 @@ import 'package:deadlinealert/providers/auth_provider.dart';
 import 'package:deadlinealert/providers/deadline_provider.dart';
 import 'package:deadlinealert/providers/category_provider.dart';
 import 'package:deadlinealert/services/supabase_service.dart';
+import 'package:deadlinealert/services/haptic_feedback_service.dart';
+import 'package:deadlinealert/utils/animation_utils.dart' as anim;
+import 'package:deadlinealert/utils/custom_refresh_indicator.dart';
+import 'package:deadlinealert/widgets/priority_badge.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,11 +23,21 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with TickerProviderStateMixin {
   int _currentIndex = 0;
   String? _selectedCategoryId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  // Animation controllers
+  late AnimationController _fabAnimationController;
+  late AnimationController _addTaskAnimationController;
+  late AnimationController _tabTransitionController;
+  bool _isAddingTask = false;
+
+  // Add the following state variable near the top of the _HomeScreenState class:
+  Priority? _priorityFilter;
 
   @override
   void initState() {
@@ -32,15 +47,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _searchQuery = _searchController.text;
       });
     });
+
+    // Initialize animation controllers
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _addTaskAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _tabTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    // Start FAB animation
+    _fabAnimationController.forward();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _fabAnimationController.dispose();
+    _addTaskAnimationController.dispose();
+    _tabTransitionController.dispose();
     super.dispose();
   }
 
   void _handleTabChange(int index) {
+    if (_currentIndex == index) return;
+
+    // Animate tab transition
+    _tabTransitionController.forward(from: 0.0);
+
     setState(() {
       _currentIndex = index;
       // Reset selected category when changing tabs
@@ -48,17 +90,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _selectedCategoryId = null;
       }
     });
+
+    HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
   }
 
   void _addNewDeadline() {
-    context.go('/deadline/new');
+    setState(() {
+      _isAddingTask = true;
+    });
+
+    // Play add task animation
+    _addTaskAnimationController.forward(from: 0.0).then((_) {
+      context.go('/deadline/new');
+
+      // Reset animation state after navigation
+      setState(() {
+        _isAddingTask = false;
+      });
+      _addTaskAnimationController.reset();
+    });
+
+    HapticFeedbackService.instance.feedback(HapticFeedbackType.medium);
   }
 
   void _editDeadline(String id) {
+    HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
     context.go('/deadline/$id');
   }
 
   void _toggleDeadlineCompletion(String id, bool currentStatus) {
+    // Provide haptic feedback
+    if (!currentStatus) {
+      HapticFeedbackService.instance.feedback(HapticFeedbackType.success);
+    } else {
+      HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
+    }
+
     final authState = ref.read(authProvider);
     ref
         .read(deadlineProvider(authState.deviceId).notifier)
@@ -239,22 +306,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final dateFormat = DateFormat('h:mm a');
     final formattedTime = dateFormat.format(deadline.dueDate);
 
-    // Define priority colors
-    final priorityColors = {
-      Priority.low: Colors.green,
-      Priority.medium: Colors.orange,
-      Priority.high: Colors.red.shade500,
-    };
-
-    final priorityColor = priorityColors[deadline.priority] ?? Colors.orange;
+    // Use a GlobalKey to access the ConfettiEffect
+    final confettiEffectKey = GlobalKey();
 
     return Slidable(
       key: ValueKey(deadline.id),
       endActionPane: ActionPane(
         motion: const DrawerMotion(),
+        extentRatio: 0.5,
+        dismissible: DismissiblePane(
+          onDismissed: () => _deleteDeadline(deadline.id, deadline.title),
+          closeOnCancel: true,
+          confirmDismiss: () async {
+            HapticFeedbackService.instance.feedback(HapticFeedbackType.medium);
+            final confirm =
+                await showDialog<bool>(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      backgroundColor: const Color(0xFF8B0000).withOpacity(0.9),
+                      title: const Text(
+                            'Confirm Delete',
+                            style: TextStyle(color: Colors.white),
+                          )
+                          .animate()
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: 0.2, end: 0),
+                      content: Text(
+                        'Are you sure you want to delete "${deadline.title}"?',
+                        style: const TextStyle(color: Colors.white),
+                      ).animate().fadeIn(delay: 150.ms, duration: 300.ms),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text(
+                            'Delete',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ).animate().scale(
+                      begin: const Offset(0.8, 0.8),
+                      end: const Offset(1.0, 1.0),
+                      duration: 300.ms,
+                      curve: Curves.easeOutBack,
+                    );
+                  },
+                ) ??
+                false;
+            return confirm;
+          },
+        ),
         children: [
           SlidableAction(
-            onPressed: (_) => _editDeadline(deadline.id),
+            onPressed: (_) {
+              HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
+              _editDeadline(deadline.id);
+            },
             backgroundColor: Colors.white.withOpacity(0.3),
             foregroundColor: Colors.white,
             icon: Icons.edit,
@@ -265,7 +380,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           SlidableAction(
-            onPressed: (_) => _deleteDeadline(deadline.id, deadline.title),
+            onPressed: (_) {
+              HapticFeedbackService.instance.feedback(HapticFeedbackType.error);
+              _deleteDeadline(deadline.id, deadline.title);
+            },
             backgroundColor: Colors.red.withOpacity(0.7),
             foregroundColor: Colors.white,
             icon: Icons.delete,
@@ -277,130 +395,159 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        elevation: 0,
-        color: Colors.white.withOpacity(0.15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: InkWell(
-          onTap: () => _editDeadline(deadline.id),
-          borderRadius: BorderRadius.circular(12),
-          splashColor: Colors.white.withOpacity(0.1),
-          highlightColor: Colors.white.withOpacity(0.05),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Checkbox
-                Transform.scale(
-                  scale: 1.1,
-                  child: Checkbox(
-                    value: deadline.isCompleted,
-                    onChanged: (value) {
-                      if (value != null) {
+      child: anim.ConfettiEffect(
+        key: confettiEffectKey,
+        active: false,
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          elevation: 0,
+          color: Colors.white.withOpacity(0.15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: InkWell(
+            onTap: () {
+              HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
+              _editDeadline(deadline.id);
+            },
+            borderRadius: BorderRadius.circular(12),
+            splashColor: Colors.white.withOpacity(0.1),
+            highlightColor: Colors.white.withOpacity(0.05),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Checkbox with animated checkmark
+                  Transform.scale(
+                    scale: 1.1,
+                    child: InkWell(
+                      onTap: () {
+                        // Play confetti effect when completing a task
+                        if (!deadline.isCompleted) {
+                          // Trigger confetti effect
+                          (confettiEffectKey.currentWidget
+                                  as anim.ConfettiEffect)
+                              .triggerConfetti(context);
+                        }
                         _toggleDeadlineCompletion(
                           deadline.id,
                           deadline.isCompleted,
                         );
-                      }
-                    },
-                    fillColor: MaterialStateProperty.resolveWith<Color>((
-                      states,
-                    ) {
-                      if (states.contains(MaterialState.selected)) {
-                        return Colors.white.withOpacity(0.8);
-                      }
-                      return Colors.white.withOpacity(0.3);
-                    }),
-                    checkColor: const Color(0xFF8B0000),
-                    shape: RoundedRectangleBorder(
+                      },
                       borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color:
+                                  deadline.isCompleted
+                                      ? Colors.white.withOpacity(0.8)
+                                      : Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child:
+                                deadline.isCompleted
+                                    ? anim.AnimatedCheckmark(
+                                      complete: true,
+                                      color: const Color(0xFF8B0000),
+                                      size: 20,
+                                    )
+                                    : null,
+                          )
+                          .animate(target: deadline.isCompleted ? 1 : 0)
+                          .scale(
+                            begin: const Offset(0.8, 0.8),
+                            end: const Offset(1.1, 1.1),
+                            duration: 300.ms,
+                          ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                // Priority indicator
-                Container(
-                  width: 16,
-                  height: 16,
-                  margin: const EdgeInsets.only(top: 2, right: 12),
-                  decoration: BoxDecoration(
-                    color: priorityColor,
-                    shape: BoxShape.circle,
+                  const SizedBox(width: 8),
+                  // Priority badge with animation for high priority
+                  PriorityBadge(
+                    priority: deadline.priority,
+                    mini: true,
+                    animate: !deadline.isCompleted,
                   ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title
-                      Text(
-                        deadline.title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.white,
-                          decoration:
-                              deadline.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                        ),
-                      ),
-                      if (deadline.description != null &&
-                          deadline.description!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            deadline.description!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white.withOpacity(0.7),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title with animation for completion
+                        deadline.isCompleted
+                            ? Text(
+                              deadline.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.white.withOpacity(0.5),
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ).animate().fadeIn()
+                            : Text(
+                              deadline.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
+                            ).animate().fadeIn(),
+                        if (deadline.description != null &&
+                            deadline.description!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              deadline.description!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withOpacity(0.7),
+                              ),
                             ),
                           ),
-                        ),
-                      // Category
-                      if (category != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: category.colorValue,
-                                  shape: BoxShape.circle,
+                        // Category
+                        if (category != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: category.colorValue,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                category.name,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white.withOpacity(0.7),
+                                const SizedBox(width: 4),
+                                Text(
+                                  category.name,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withOpacity(0.7),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                // Time
-                Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    formattedTime,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.white.withOpacity(0.7),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  // Time
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      formattedTime,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -531,24 +678,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
-            // Deadline list
+            // Content with standard RefreshIndicator
             Expanded(
-              child:
-                  todayDeadlines.isEmpty
-                      ? _buildEmptyState(
-                        'No deadlines due today',
-                        Icons.check_circle_outline,
-                      )
-                      : ListView.builder(
-                        itemCount: todayDeadlines.length,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  HapticFeedbackService.instance.feedback(
+                    HapticFeedbackType.notification,
+                  );
+                  await ref
+                      .read(deadlineProvider(authState.deviceId).notifier)
+                      .fetchDeadlines();
+                },
+                child:
+                    todayDeadlines.isEmpty
+                        ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 100),
+                            _buildEmptyState(
+                              'No tasks due today',
+                              Icons.check_circle_outline,
+                            ),
+                          ],
+                        )
+                        : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: todayDeadlines.length,
+                          itemBuilder: (context, index) {
+                            return _buildDeadlineItem(todayDeadlines[index]);
+                          },
                         ),
-                        itemBuilder: (context, index) {
-                          return _buildDeadlineItem(todayDeadlines[index]);
-                        },
-                      ),
+              ),
             ),
           ],
         ),
@@ -560,91 +720,197 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final authState = ref.watch(authProvider);
     final deadlineState = ref.watch(deadlineProvider(authState.deviceId));
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF8B0000), // Dark red
-            const Color(0xFF6B0000), // Even darker red
-          ],
-        ),
+    // Filter upcoming deadlines by priority if filter is active
+    final upcomingDeadlines =
+        _priorityFilter != null
+            ? deadlineState.upcomingDeadlines
+                .where((d) => d.priority == _priorityFilter)
+                .toList()
+            : deadlineState.upcomingDeadlines;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Upcoming Deadlines'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
+              ref
+                  .read(deadlineProvider(authState.deviceId).notifier)
+                  .fetchDeadlines();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () {
+              HapticFeedbackService.instance.feedback(HapticFeedbackType.light);
+              context.go('/deadline/new');
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white),
+            onPressed: _openSettings,
+          ),
+        ],
       ),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
+      body: Column(
+        children: [
+          // Priority filter section
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Filter by Priority',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        margin: const EdgeInsets.only(right: 12),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.contain,
+                      // All (no filter)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: const Text('All'),
+                          selected: _priorityFilter == null,
+                          onSelected: (selected) {
+                            HapticFeedbackService.instance.feedback(
+                              HapticFeedbackType.light,
+                            );
+                            setState(() {
+                              _priorityFilter = null;
+                            });
+                          },
+                          backgroundColor: Colors.white.withOpacity(0.1),
+                          selectedColor: Colors.white.withOpacity(0.3),
+                          checkmarkColor: Colors.white,
+                          labelStyle: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                          ),
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Upcoming',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                      // Low priority filter
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Row(
+                            children: [
+                              PriorityBadge(
+                                priority: Priority.low,
+                                mini: true,
+                                animate: false,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text('Low'),
+                            ],
                           ),
-                          Text(
-                            '${deadlineState.upcomingDeadlines.length} tugas',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: 14,
-                            ),
+                          selected: _priorityFilter == Priority.low,
+                          onSelected: (selected) {
+                            HapticFeedbackService.instance.feedback(
+                              HapticFeedbackType.light,
+                            );
+                            setState(() {
+                              _priorityFilter = selected ? Priority.low : null;
+                            });
+                          },
+                          backgroundColor: Colors.green.withOpacity(0.1),
+                          selectedColor: Colors.green.withOpacity(0.3),
+                          checkmarkColor: Colors.white,
+                          labelStyle: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      // Medium priority filter
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Row(
+                            children: [
+                              PriorityBadge(
+                                priority: Priority.medium,
+                                mini: true,
+                                animate: false,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text('Medium'),
+                            ],
                           ),
-                        ],
+                          selected: _priorityFilter == Priority.medium,
+                          onSelected: (selected) {
+                            HapticFeedbackService.instance.feedback(
+                              HapticFeedbackType.light,
+                            );
+                            setState(() {
+                              _priorityFilter =
+                                  selected ? Priority.medium : null;
+                            });
+                          },
+                          backgroundColor: Colors.orange.withOpacity(0.1),
+                          selectedColor: Colors.orange.withOpacity(0.3),
+                          checkmarkColor: Colors.white,
+                          labelStyle: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      // High priority filter
+                      FilterChip(
+                        label: Row(
+                          children: [
+                            PriorityBadge(
+                              priority: Priority.high,
+                              mini: true,
+                              animate: false,
+                            ),
+                            const SizedBox(width: 4),
+                            const Text('High'),
+                          ],
+                        ),
+                        selected: _priorityFilter == Priority.high,
+                        onSelected: (selected) {
+                          HapticFeedbackService.instance.feedback(
+                            HapticFeedbackType.light,
+                          );
+                          setState(() {
+                            _priorityFilter = selected ? Priority.high : null;
+                          });
+                        },
+                        backgroundColor: Colors.red.withOpacity(0.1),
+                        selectedColor: Colors.red.withOpacity(0.3),
+                        checkmarkColor: Colors.white,
+                        labelStyle: const TextStyle(color: Colors.white),
                       ),
                     ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.settings, color: Colors.white),
-                    onPressed: _openSettings,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
-            // Deadline list
-            Expanded(
-              child:
-                  deadlineState.upcomingDeadlines.isEmpty
-                      ? _buildEmptyState(
-                        'No upcoming deadlines',
-                        Icons.event_note,
-                      )
-                      : ListView.builder(
-                        itemCount: deadlineState.upcomingDeadlines.length,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        itemBuilder: (context, index) {
-                          return _buildDeadlineItem(
-                            deadlineState.upcomingDeadlines[index],
-                          );
-                        },
+          // Deadline list
+          Expanded(
+            child:
+                upcomingDeadlines.isEmpty
+                    ? _buildEmptyState(
+                      'No upcoming deadlines',
+                      Icons.event_note,
+                    )
+                    : ListView.builder(
+                      itemCount: upcomingDeadlines.length,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
                       ),
-            ),
-          ],
-        ),
+                      itemBuilder: (context, index) {
+                        return _buildDeadlineItem(upcomingDeadlines[index]);
+                      },
+                    ),
+          ),
+        ],
       ),
     );
   }
@@ -1188,14 +1454,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _getScreen(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addNewDeadline,
-        elevation: 4,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF8B0000),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.05, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+              child: child,
+            ),
+          );
+        },
+        child: _getScreen(),
+      ),
+      floatingActionButton: AnimatedBuilder(
+        animation: _fabAnimationController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _fabAnimationController.value,
+            child: Transform.translate(
+              offset: Offset(0, 20 * (1 - _fabAnimationController.value)),
+              child: AnimatedBuilder(
+                animation: _addTaskAnimationController,
+                builder: (context, child) {
+                  final scale =
+                      _isAddingTask
+                          ? 1.0 + (_addTaskAnimationController.value * 0.4)
+                          : 1.0;
+                  final rotate =
+                      _isAddingTask
+                          ? _addTaskAnimationController.value * 0.5
+                          : 0.0;
+
+                  return Transform.scale(
+                    scale: scale,
+                    child: Transform.rotate(angle: rotate, child: child),
+                  );
+                },
+                child: FloatingActionButton(
+                  onPressed: _addNewDeadline,
+                  elevation: 4,
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF8B0000),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ),
+          );
+        },
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -1221,20 +1535,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           unselectedLabelStyle: const TextStyle(fontSize: 12),
           elevation: 0,
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today),
+              icon: _buildAnimatedNavIcon(Icons.calendar_today, 0),
               label: 'Today',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month),
+              icon: _buildAnimatedNavIcon(Icons.calendar_month, 1),
               label: 'Upcoming',
             ),
-            BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-            BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Browse'),
+            BottomNavigationBarItem(
+              icon: _buildAnimatedNavIcon(Icons.search, 2),
+              label: 'Search',
+            ),
+            BottomNavigationBarItem(
+              icon: _buildAnimatedNavIcon(Icons.menu, 3),
+              label: 'Browse',
+            ),
           ],
         ),
       ),
     );
+  }
+
+  // Helper method to build animated navigation icons
+  Widget _buildAnimatedNavIcon(IconData icon, int index) {
+    return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color:
+                _currentIndex == index
+                    ? const Color(0xFF8B0000).withOpacity(0.15)
+                    : Colors.transparent,
+          ),
+          child: Icon(icon),
+        )
+        .animate(target: _currentIndex == index ? 1 : 0)
+        .scale(
+          begin: const Offset(1.0, 1.0),
+          end: const Offset(1.2, 1.2),
+          duration: 300.ms,
+        );
   }
 }

@@ -8,6 +8,7 @@ import 'package:deadlinealert/providers/auth_provider.dart';
 import 'package:deadlinealert/providers/deadline_provider.dart';
 import 'package:deadlinealert/providers/category_provider.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:deadlinealert/widgets/priority_badge.dart';
 
 class OverdueDeadlinesScreen extends ConsumerWidget {
   const OverdueDeadlinesScreen({super.key});
@@ -204,14 +205,10 @@ class OverdueDeadlinesScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                     // Priority indicator
-                    Container(
-                      width: 16,
-                      height: 16,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        color: priorityColor,
-                        shape: BoxShape.circle,
-                      ),
+                    PriorityBadge(
+                      priority: deadline.priority,
+                      mini: true,
+                      animate: !deadline.isCompleted,
                     ),
                     Expanded(
                       child: Column(

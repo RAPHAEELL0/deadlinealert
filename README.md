@@ -158,3 +158,33 @@ flutter build web --release
 - [Riverpod](https://riverpod.dev/)
 - [Supabase](https://supabase.com/)
 - [GoRouter](https://pub.dev/packages/go_router)
+
+## Priority Mode Feature
+
+The DeadlineAlert app includes a priority mode feature that allows users to visually distinguish between deadlines based on their importance level. This feature enhances task organization and helps users quickly identify high-priority tasks.
+
+### Features of Priority Mode
+
+1. **Visual Priority Indicators**: Each deadline displays a color-coded indicator based on its priority level:
+   - Green: Low priority
+   - Orange: Medium priority
+   - Red: High priority 
+
+2. **Animated High Priority Tasks**: High-priority tasks feature a subtle pulsing animation to draw attention to urgent deadlines.
+
+3. **Priority Filtering**: Users can filter their upcoming deadlines by priority level using the filter chips on the Upcoming screen.
+
+4. **Enhanced Priority Selection**: When creating or editing a deadline, users can select from three priority levels with an intuitive visual interface.
+
+5. **Consistent Visual Language**: Priority indicators maintain a consistent visual style throughout the app for better user experience.
+
+### Implementation Details
+
+The priority mode feature leverages the existing Priority enum (`low`, `medium`, `high`) in the Deadline model and enhances the UI with:
+
+- A dedicated `PriorityBadge` widget for consistent representation
+- Animation effects for high-priority items
+- Color coding based on urgency level
+- Enhanced form UI for selecting priority levels
+
+This feature works with the existing database schema which already stores priority information for each deadline.
